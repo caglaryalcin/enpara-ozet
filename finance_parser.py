@@ -313,7 +313,11 @@ def main():
         islemler, ekstre_borcu, min_odeme, ozet, ekstre_ay, ekstre_yil = parse_kart(kart_pdf)
         print(f"{len([i for i in islemler if i['tutar'] > 0])} harcama işlemi bulundu.")
 
-        donem = f"{ekstre_ay}_{ekstre_yil}" if (ekstre_ay and ekstre_yil) else kart_pdf.stem
+        def slugify(text):
+        tr = str.maketrans("şŞğĞüÜöÖıİçÇ", "sSgGuUoOiIcC")
+        return text.translate(tr)
+
+        donem = slugify(f"{ekstre_ay}_{ekstre_yil}") if (ekstre_ay and ekstre_yil) else kart_pdf.stem
         out_path = folder / f"Enpara_Rapor_{donem}.txt"
         with open(out_path, "w", encoding="utf-8") as f:
             yaz_rapor(f, islemler, ekstre_borcu, min_odeme, ozet, ekstre_ay)
