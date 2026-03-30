@@ -19,11 +19,11 @@ KATEGORILER = {
                             r"\bpiano\b",
                             "gloria jean", "caribou", "petra roast",
                             "mandabatmaz", "costa", "caffe nero", "tim horton",
-                            r"\bbrew\b", r"\bkahve\b"],
+                            r"\bbrew\b", r"\bkahve"],
     "Yemek / Restoran":   ["gunaydin", "oses", "cigkofte", "cig kofte",
                             "konyali", r"\bkosk\b", "bartos", "burger",
-                            "prava", "pita", "pravaa", "kavurmaci", "steakho",
-                            "kasaf", r"\betli\b", r"\bkofte\b", "doner",
+                            "prava", r"\bpita\b", "pravaa", "kavurmaci", "steakho",
+                            "kasaf", r"\betli\b", r"\bkofte", "doner",
                             "lokanta", "restoran", "pizza", r"\blariba\b",
                             "tacuk", "torunlar", "battal gazi",
                             "mcdonalds", "mcdonald", r"\bkfc\b", "burger king",
@@ -49,7 +49,7 @@ KATEGORILER = {
                             r"\bmanav\b", r"\bbakkal\b", "sut market", "fresh market",
                             "kose market",
                             "dora roma", "kizilkayalar"],
-    "Sağlık":             ["eczane", "eczanesi", "hastane", "klinik",
+    "Sağlık":             ["eczane", "eczanesi", "hastane", "hospital", "klinik",
                             "universitesi tip", "ozel gop", "raim eczane",
                             "foca eczane", "optik",
                             r"\bdis\b", "dental", r"\bdoktor\b", "poliklinik",
@@ -165,7 +165,7 @@ def format_tl(val):
 AYLAR = {1:"Ocak",2:"Şubat",3:"Mart",4:"Nisan",5:"Mayıs",6:"Haziran",
          7:"Temmuz",8:"Ağustos",9:"Eylül",10:"Ekim",11:"Kasım",12:"Aralık"}
 
-TUTAR_SON = re.compile(r"([-\s\d.,]+TL)$")
+TUTAR_SON = re.compile(r"(?<!\d)([\s\-]*[\d.,]+\s*TL)$")
 EKSTRE_BORC = re.compile(r"ekstre borcu\s+([\d.,]+\s*TL)", re.IGNORECASE)
 MIN_ODEME   = re.compile(r"minimum \xf6deme tutar\u0131\s+([\d.,]+\s*TL)", re.IGNORECASE)
 
@@ -189,6 +189,26 @@ def parse_kart(pdf_path):
         for page in pdf.pages:
             text = cid_temizle(page.extract_text() or "")
             all_lines.extend(text.split("\n"))
+
+    # DEBUG: tüm parse edilen işlemler — sorun çözülünce kaldır
+
+    # Taksitli işlemlerde tutar bazen bir sonraki satırda gelir.
+    # Tarihle başlayıp TL içermeyen satırları devam satırıyla birleştir.
+    merged = []
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i]
+        if (re.match(r"^\s*\d{2}/\d{2}/\d{4}", line)
+                and not TUTAR_SON.search(line)
+                and i + 1 < len(all_lines)):
+            nxt = all_lines[i + 1].strip()
+            if TUTAR_SON.search(nxt) and not re.match(r"^\d{2}/\d{2}/\d{4}", nxt):
+                merged.append(line.strip() + " " + nxt)
+                i += 2
+                continue
+        merged.append(line)
+        i += 1
+    all_lines = merged
 
     for line in all_lines:
         if ekstre_ay is None:
@@ -229,11 +249,17 @@ def parse_kart(pdf_path):
 
         rest     = line[11:].strip()
         aciklama = rest[:rest.rfind(m.group(1))].strip()
-        aciklama = re.sub(r"\([\d.,]+ TL\)\s*\d+/\d+", "", aciklama).strip()
+
+        taksit_m = re.search(r"\([^)]*\d[\d.,]* TL\)\s*(\d+/\d+)", aciklama)
+        taksit   = taksit_m.group(1) if taksit_m else None
+
+        aciklama = re.sub(r"\([^)]*\d[\d.,]* TL\)\s*\d+/\d+", "", aciklama).strip()
+        aciklama = re.sub(r"\s+ISTANBUL\s+TR\b", "", aciklama).strip()
 
         islemler.append({
             "aciklama": aciklama,
             "tutar":    tutar,
+            "taksit":   taksit,
             "kategori": kategori_bul(aciklama),
         })
 
@@ -248,11 +274,15 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
     for i in harcamalar:
         grp.setdefault(i["kategori"], []).append(i)
 
-    sirali = sorted(
-        [(k, v) for k, v in grp.items() if k not in ("Faiz / Vergi", "Diğer")],
-        key=lambda x: sum(i["tutar"] for i in x[1]),
-        reverse=True,
-    )
+    KATEGORI_SIRASI = [
+        "Dijital / Abonelik", "Online Alışveriş", "Fatura / Hizmet",
+        "Giyim / Alışveriş", "Sağlık", "Market / Gıda", "Yemek / Restoran",
+        "Kahve", "Seyahat", "Ulaşım",
+    ]
+    sirali = [(k, grp[k]) for k in KATEGORI_SIRASI if k in grp]
+    for k, v in grp.items():
+        if k not in KATEGORI_SIRASI and k not in ("Diğer", "Faiz / Vergi"):
+            sirali.append((k, v))
     if "Diğer" in grp:
         sirali.append(("Diğer", grp["Diğer"]))
     if "Faiz / Vergi" in grp:
@@ -270,12 +300,21 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
         f.write(f"{kat.upper()}  {format_tl(kat_toplam)}  %{oran:.0f}\n")
         f.write(f"{SEP}\n")
 
-        tekil: dict[str, float] = {}
+        satirlar: list[dict] = []
+        tekil: dict[str, dict] = {}
         for i in islem_listesi:
-            tekil[i["aciklama"]] = tekil.get(i["aciklama"], 0) + i["tutar"]
+            if i.get("taksit"):
+                satirlar.append({"aciklama": i["aciklama"], "tutar": i["tutar"], "taksit": i["taksit"]})
+            else:
+                if i["aciklama"] not in tekil:
+                    tekil[i["aciklama"]] = {"tutar": 0, "taksit": None}
+                tekil[i["aciklama"]]["tutar"] += i["tutar"]
+        for aciklama, info in tekil.items():
+            satirlar.append({"aciklama": aciklama, **info})
 
-        for aciklama, tutar in sorted(tekil.items(), key=lambda x: x[1], reverse=True):
-            f.write(f"{aciklama}  {format_tl(tutar)}\n")
+        for satir in sorted(satirlar, key=lambda x: x["tutar"], reverse=True):
+            taksit_str = f" ({satir['taksit']} Taksit)" if satir.get("taksit") else ""
+            f.write(f"{satir['aciklama']}  {format_tl(satir['tutar'])}{taksit_str}\n")
 
     odeme_etiket = f"{ekstre_ay} ödemesi" if ekstre_ay else "Ödeme"
 
