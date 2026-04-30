@@ -13,6 +13,7 @@ from pathlib import Path
 import pdfplumber
 
 KATEGORILER = {
+    "Yurtdışı Harcamalar": ["yurt disi", "yurtdisi"],
     "Kahve":              ["aroasting", "sespresso", "soil coffee", "starbucks",
                             "shady coffee", "fam coffee", "null coffee",
                             "kahve dunyasi", "coffeemania", r"\bcoffee\b",
@@ -30,6 +31,7 @@ KATEGORILER = {
                             "pizza hut", "dominos", "little caesar", "subway",
                             "popeyes", "taco bell", "five guys",
                             "yemeksepeti", "trendyol yemek",
+                            "fast food",
                             "kebap", "kebab", "mangal", "ocakbasi", "lahmacun",
                             r"\bpide\b", r"\bborek\b", r"\bbalik\b", r"\bfirin\b",
                             "sushi", "iskender", "tantuni",
@@ -43,7 +45,7 @@ KATEGORILER = {
     "Market / Gıda":      ["getir", r"param\s*/", "migros", r"\ba101\b", r"\bbim\b",
                             "carrefour", "demir gida", "simit", "pastane",
                             "kuruyemis", "bozacisi", "cikolata", "kasap",
-                            "kosk", "konyali", "gida",
+                            "kosk", "konyali", "gida", r"\bet\b", "unlu mamul",
                             r"\bsok\b", "hakmar", "makromarket", "file market",
                             r"\bdia\b", "ekomini", "tarım kredi",
                             r"\bmanav\b", r"\bbakkal\b", "sut market", "fresh market",
@@ -119,6 +121,7 @@ KATEGORILER = {
                             r"\buber\b", "bitaksi", "marti", "gopark", "filo otomotiv",
                             "uzl filo",
                             "easypark", "parkmatic", "tuvturk",
+                            "sabiha gokcen", r"\bsaw\b",
                             r"\botogar\b", "karayollari"],
     "Faiz / Vergi":       ["faiz", "kkdf", "bsmv", "komisyon", r"\bvergi\b", "masraf",
                             "alisveris faizi"],
@@ -134,7 +137,14 @@ def normalize(text):
     return text.translate(tr)
 
 
+FOREIGN_CCY_RE = re.compile(
+    r"\(\s*[\d.,]+\s+[A-Z]{3}\s*\)|\(\s*[A-Z]{3}\s+[\d.,]+\s*\)"
+)
+
+
 def kategori_bul(aciklama):
+    if FOREIGN_CCY_RE.search(aciklama):
+        return "Yurtdışı Harcamalar"
     n = normalize(aciklama)
     for kat, kelimeler in KATEGORILER.items():
         for k in kelimeler:
@@ -277,7 +287,7 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
     KATEGORI_SIRASI = [
         "Dijital / Abonelik", "Online Alışveriş", "Fatura / Hizmet",
         "Giyim / Alışveriş", "Sağlık", "Market / Gıda", "Yemek / Restoran",
-        "Kahve", "Seyahat", "Ulaşım",
+        "Kahve", "Seyahat", "Ulaşım", "Oyuncak", "Yurtdışı Harcamalar",
     ]
     sirali = [(k, grp[k]) for k in KATEGORI_SIRASI if k in grp]
     for k, v in grp.items():
