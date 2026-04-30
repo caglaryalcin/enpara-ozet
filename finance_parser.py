@@ -67,7 +67,8 @@ KATEGORILER = {
                             "storytel", "audible", "linkedin", r"\bzoom\b", "dropbox",
                             "adobe", "chatgpt", "midjourney", "github", "faceit",
                             "epicgames", "epic games", "roblox", "nintendo",
-                            "icloud", "parametrix"],
+                            "icloud", "parametrix",
+                            r"\.ai\b"],
     "Online Alışveriş":   [r"\bamazon\b", "hepsiburada", "hepsipay", "n11",
                             "trendyol", "aliexpress", "ciceksepeti",
                             "gittigidiyor", "iyzico", "temu", "shein",
@@ -142,11 +143,21 @@ FOREIGN_CCY_RE = re.compile(
 )
 
 
+ONCELIKLI_KATEGORILER = ["Dijital / Abonelik", "Online Alışveriş"]
+
+
 def kategori_bul(aciklama):
+    n = normalize(aciklama)
+    for kat in ONCELIKLI_KATEGORILER:
+        for k in KATEGORILER[kat]:
+            pat = k if (r"\b" in k or r"\s" in k) else re.escape(k)
+            if re.search(pat, n):
+                return kat
     if FOREIGN_CCY_RE.search(aciklama):
         return "Yurtdışı Harcamalar"
-    n = normalize(aciklama)
     for kat, kelimeler in KATEGORILER.items():
+        if kat in ONCELIKLI_KATEGORILER:
+            continue
         for k in kelimeler:
             pat = k if (r"\b" in k or r"\s" in k) else re.escape(k)
             if re.search(pat, n):
