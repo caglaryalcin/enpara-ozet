@@ -41,7 +41,9 @@ KATEGORILER = {
                             "eataly", "morini", "ramiz",
                             r"\bdurumle\b", "saray muhallebi",
                             "espressolab", "espresso lab",
-                            "faruk gulluoglu"],
+                            "faruk gulluoglu",
+                            "hafiz mustafa", "sutcuogullari",
+                            r"\btost\b"],
     "Market / Gıda":      ["getir", r"param\s*/", "migros", r"\ba101\b", r"\bbim\b",
                             "carrefour", "demir gida", "simit", "pastane",
                             "kuruyemis", "bozacisi", "cikolata", "kasap",
@@ -50,14 +52,16 @@ KATEGORILER = {
                             r"\bdia\b", "ekomini", "tarım kredi",
                             r"\bmanav\b", r"\bbakkal\b", "sut market", "fresh market",
                             "kose market",
-                            "dora roma", "kizilkayalar"],
+                            "dora roma", "kizilkayalar",
+                            r"\bfile\b", "macrocenter"],
     "Sağlık":             ["eczane", "eczanesi", "hastane", "hospital", "klinik",
                             "universitesi tip", "ozel gop", "raim eczane",
                             "foca eczane", "optik",
                             r"\bdis\b", "dental", r"\bdoktor\b", "poliklinik",
                             "medikal", r"\blab\b", "laboratuvar",
                             "saglik merkezi", "rontgen", "ultrason",
-                            r"\bhekim\b", "dis klinigi"],
+                            r"\bhekim\b", "dis klinigi",
+                            r"\bdr\b"],
     "Dijital / Abonelik": ["claude", "google", "playstation", r"\bpsn\b", "youtube",
                             "netflix", "spotify", r"\bapple\b", "microsoft", "steam",
                             "twitch", "amazonprime", "amazon prime", "disney", "exxen",
@@ -69,11 +73,12 @@ KATEGORILER = {
                             "epicgames", "epic games", "roblox", "nintendo",
                             "icloud", "parametrix",
                             r"\.ai\b"],
-    "Online Alışveriş":   [r"\bamazon\b", "hepsiburada", "hepsipay", "n11",
+    "Online Alışveriş":   [r"\bamazon\b", r"\bamzn\b", "hepsiburada", "hepsipay", "n11",
                             "trendyol", "aliexpress", "ciceksepeti",
                             "gittigidiyor", "iyzico", "temu", "shein",
                             r"\bebay\b", "reyonplus", "sahibinden",
-                            "sanal magaza", r"\.(com|net)(\.tr)?\b"],
+                            "sanal magaza", r"\.(com|net)(\.tr)?\b",
+                            "perakende"],
     "Fatura / Hizmet":    ["turkcell", "turk telekom", "ttnet", "vodafone",
                             "elektrik", "dogalgaz", "igdas", r"\biski\b", "internet",
                             "fiber", "sigorta", "aidat", "danisim elektrik",
@@ -114,7 +119,8 @@ KATEGORILER = {
                             "flormar", "golden rose", "kiko", "lelas", "cella",
                             "d&p parfum", "flormar",
                             # Bebek
-                            "chicco", "ebebe", "mamino"],
+                            "chicco", "ebebe", "mamino",
+                            "u.s polo", "us polo"],
     "Ulaşım":             ["akaryakit", "petrol", r"\bshell\b", r"\bbp\b", "opet",
                             r"\btotal\b", "otopark", "otoyol", r"\bhgs\b", r"\bogs\b",
                             r"\byss\b", "kopru gecis",
@@ -311,7 +317,7 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
 
     genel_toplam = sum(i["tutar"] for i in harcamalar)
 
-    SEP = "─" * 42
+    SEP = "─" * 38
 
     for idx, (kat, islem_listesi) in enumerate(sirali):
         kat_toplam = sum(i["tutar"] for i in islem_listesi)
