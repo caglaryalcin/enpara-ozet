@@ -22,7 +22,7 @@ KATEGORILER = {
                             "mandabatmaz", "costa", "caffe nero", "tim horton",
                             r"\bbrew\b", r"\bkahve", r"\bsbx\b",
                             "espressolab", "espresso lab"],
-    "Yemek / Restoran":   ["gunaydin", "oses", "cigkofte", "cig kofte",
+    "Yemek / Restoran":   ["midpoint", "pierreloti", "gunaydin", "oses", "cigkofte", "cig kofte",
                             "konyali", r"\bkosk\b", "bartos", "burger",
                             "prava", r"\bpita\b", "pravaa", "kavurmaci", "steakho",
                             "kasaf", r"\betli\b", r"\bkofte", "doner",
@@ -212,16 +212,17 @@ def parse_kart(pdf_path):
     ozet          = None
     ekstre_ay     = None
     ekstre_yil    = None
+
+    toplam_faiz = 0.0
+    toplam_kkdf = 0.0
+    toplam_bsmv = 0.0
+
     with pdfplumber.open(pdf_path) as pdf:
         all_lines = []
         for page in pdf.pages:
             text = cid_temizle(page.extract_text() or "")
             all_lines.extend(text.split("\n"))
 
-    # DEBUG: tüm parse edilen işlemler — sorun çözülünce kaldır
-
-    # Taksitli işlemlerde tutar bazen bir sonraki satırda gelir.
-    # Tarihle başlayıp TL içermeyen satırları devam satırıyla birleştir.
     merged = []
     i = 0
     while i < len(all_lines):
@@ -265,6 +266,19 @@ def parse_kart(pdf_path):
                         "faiz":      parsed[4],
                         "ekstre":    parsed[5],
                     }
+
+        matches = re.findall(r"(faiz|kkdf|bsmv)[^\d.-]*?([\d.,]+\s*TL)", line, re.IGNORECASE)
+        for kw, tutar_str in matches:
+            kw_lower = kw.lower()
+            val = parse_tutar(tutar_str)
+            if val and val > 0:
+                if "kkdf" in kw_lower:
+                    toplam_kkdf += val
+                elif "bsmv" in kw_lower:
+                    toplam_bsmv += val
+                elif "faiz" in kw_lower:
+                    toplam_faiz += val
+
         line = line.strip()
         if not re.match(r"^\d{2}/\d{2}/\d{4}", line):
             continue
@@ -291,8 +305,24 @@ def parse_kart(pdf_path):
             "kategori": kategori_bul(aciklama),
         })
 
-    return islemler, ekstre_borcu, min_odeme, ozet, ekstre_ay, ekstre_yil
+    if toplam_faiz > 0:
+        islemler.append({"aciklama": "Alışveriş faizi", "tutar": toplam_faiz, "taksit": None, "kategori": "Faiz / Vergi"})
+    if toplam_kkdf > 0:
+        islemler.append({"aciklama": "Faizlerin KKDF'si*", "tutar": toplam_kkdf, "taksit": None, "kategori": "Faiz / Vergi"})
+    if toplam_bsmv > 0:
+        islemler.append({"aciklama": "Faiz ve ücretlerin BSMV'si*", "tutar": toplam_bsmv, "taksit": None, "kategori": "Faiz / Vergi"})
+    if ozet and ozet.get("faiz"):
+        yakalanan_toplam_faiz = toplam_faiz + toplam_kkdf + toplam_bsmv
+        fark = round(ozet["faiz"] - yakalanan_toplam_faiz, 2)
+        if fark > 0.01:
+            islemler.append({
+                "aciklama": "Diğer Faiz / Masraf Detayı",
+                "tutar":    fark,
+                "taksit":   None,
+                "kategori": "Faiz / Vergi"
+            })
 
+    return islemler, ekstre_borcu, min_odeme, ozet, ekstre_ay, ekstre_yil
 
 def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_ay=None):
     harcamalar  = [i for i in islemler if i["tutar"] > 0]
