@@ -218,8 +218,23 @@ CID_MAP = {7:"ö", 8:"Ö", 9:"Ş", 10:"ü", 11:"ğ", 12:"ş",
            13:"İ", 14:"Ü", 15:"Ğ", 16:"Ç", 17:"ç"}
 CID_RE  = re.compile(r"\(cid:(\d+)\)")
 
+TAKSIT_FINANSMAN_ETIKETLERI = ("anapara", "faiz", "kkdf", "bsmv")
+
 def cid_temizle(text):
     return CID_RE.sub(lambda m: CID_MAP.get(int(m.group(1)), ""), text)
+
+
+def taksit_finansman_bul(text):
+    n = normalize(text)
+    detay = {}
+    for etiket in TAKSIT_FINANSMAN_ETIKETLERI:
+        m = re.search(rf"\b{etiket}\s*:\s*([\d.,]+)\s*tl\b", n)
+        if not m:
+            return None
+        detay[etiket] = parse_tutar(m.group(1))
+    if any(tutar is None for tutar in detay.values()):
+        return None
+    return detay
 
 
 def parse_kart(pdf_path):
@@ -229,10 +244,6 @@ def parse_kart(pdf_path):
     ozet          = None
     ekstre_ay     = None
     ekstre_yil    = None
-
-    toplam_faiz = 0.0
-    toplam_kkdf = 0.0
-    toplam_bsmv = 0.0
 
     with pdfplumber.open(pdf_path) as pdf:
         all_lines = []
@@ -256,7 +267,7 @@ def parse_kart(pdf_path):
         i += 1
     all_lines = merged
 
-    for line in all_lines:
+    for satir_no, line in enumerate(all_lines):
         if ekstre_ay is None:
             m = re.search(r"[Ee]kstre tarihi\s+\d{2}/(\d{2})/(\d{4})", line)
             if m:
@@ -284,18 +295,6 @@ def parse_kart(pdf_path):
                         "ekstre":    parsed[5],
                     }
 
-        matches = re.findall(r"(faiz|kkdf|bsmv)[^\d.-]*?([\d.,]+\s*TL)", line, re.IGNORECASE)
-        for kw, tutar_str in matches:
-            kw_lower = kw.lower()
-            val = parse_tutar(tutar_str)
-            if val and val > 0:
-                if "kkdf" in kw_lower:
-                    toplam_kkdf += val
-                elif "bsmv" in kw_lower:
-                    toplam_bsmv += val
-                elif "faiz" in kw_lower:
-                    toplam_faiz += val
-
         line = line.strip()
         if not re.match(r"^\d{2}/\d{2}/\d{4}", line):
             continue
@@ -312,24 +311,39 @@ def parse_kart(pdf_path):
         taksit_m = re.search(r"\([^)]*\d[\d.,]* TL\)\s*(\d+/\d+)", aciklama)
         taksit   = taksit_m.group(1) if taksit_m else None
 
+        taksit_finansman = None
+        if taksit:
+            detay_satirlari = [line]
+            for sonraki in all_lines[satir_no + 1:satir_no + 3]:
+                if re.match(r"^\s*\d{2}/\d{2}/\d{4}", sonraki):
+                    break
+                detay_satirlari.append(sonraki)
+            taksit_finansman = taksit_finansman_bul(" ".join(detay_satirlari))
+            if taksit_finansman:
+                detay_toplam = round(sum(taksit_finansman.values()), 2)
+                if abs(detay_toplam - tutar) > 0.05:
+                    taksit_finansman = None
+
         aciklama = re.sub(r"\([^)]*\d[\d.,]* TL\)\s*\d+/\d+", "", aciklama).strip()
         aciklama = re.sub(r"\s+ISTANBUL\s+TR\b", "", aciklama).strip()
 
-        islemler.append({
+        islem = {
             "aciklama": aciklama,
             "tutar":    tutar,
             "taksit":   taksit,
             "kategori": kategori_bul(aciklama),
-        })
+        }
+        if taksit_finansman:
+            islem["taksit_finansman"] = taksit_finansman
+        islemler.append(islem)
 
-    if toplam_faiz > 0:
-        islemler.append({"aciklama": "Alışveriş faizi", "tutar": toplam_faiz, "taksit": None, "kategori": "Faiz / Vergi"})
-    if toplam_kkdf > 0:
-        islemler.append({"aciklama": "Faizlerin KKDF'si*", "tutar": toplam_kkdf, "taksit": None, "kategori": "Faiz / Vergi"})
-    if toplam_bsmv > 0:
-        islemler.append({"aciklama": "Faiz ve ücretlerin BSMV'si*", "tutar": toplam_bsmv, "taksit": None, "kategori": "Faiz / Vergi"})
     if ozet and ozet.get("faiz"):
-        yakalanan_toplam_faiz = toplam_faiz + toplam_kkdf + toplam_bsmv
+        # Taksit açıklamalarındaki faiz/vergi parçaları taksit tutarına dahildir.
+        # Yalnızca bağımsız, tarihli Faiz / Vergi işlemlerini özetle karşılaştır.
+        yakalanan_toplam_faiz = round(sum(
+            i["tutar"] for i in islemler
+            if i["tutar"] > 0 and i["kategori"] == "Faiz / Vergi"
+        ), 2)
         fark = round(ozet["faiz"] - yakalanan_toplam_faiz, 2)
         if fark > 0.01:
             islemler.append({
@@ -342,8 +356,44 @@ def parse_kart(pdf_path):
     return islemler, ekstre_borcu, min_odeme, ozet, ekstre_ay, ekstre_yil
 
 def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_ay=None):
-    harcamalar  = [i for i in islemler if i["tutar"] > 0]
+    ham_harcamalar = [i for i in islemler if i["tutar"] > 0]
     odeme_tutari = sum(abs(i["tutar"]) for i in islemler if i["tutar"] < 0)
+
+    taksit_finansman = {"faiz": 0.0, "kkdf": 0.0, "bsmv": 0.0}
+    harcamalar = []
+    for i in ham_harcamalar:
+        detay = i.get("taksit_finansman") or {}
+        if not detay:
+            harcamalar.append(i)
+            continue
+
+        for etiket in taksit_finansman:
+            taksit_finansman[etiket] += detay[etiket]
+
+        finansman_tutari = round(sum(detay[etiket] for etiket in taksit_finansman), 2)
+        anapara_islemi = dict(i)
+        anapara_islemi["tutar"] = round(i["tutar"] - finansman_tutari, 2)
+        harcamalar.append(anapara_islemi)
+
+    taksit_finansman = {
+        etiket: round(tutar, 2) for etiket, tutar in taksit_finansman.items()
+    }
+    taksit_finansman_toplam = round(sum(taksit_finansman.values()), 2)
+
+    taksit_finansman_satirlari = (
+        ("Alışveriş faizi", "faiz"),
+        ("Faizlerin KKDF'si*", "kkdf"),
+        ("Faiz ve ücretlerin BSMV'si*", "bsmv"),
+    )
+    for aciklama, etiket in taksit_finansman_satirlari:
+        tutar = taksit_finansman[etiket]
+        if tutar > 0.01:
+            harcamalar.append({
+                "aciklama": aciklama,
+                "tutar": tutar,
+                "taksit": None,
+                "kategori": "Faiz / Vergi",
+            })
 
     grp: dict[str, list] = {}
     for i in harcamalar:
@@ -378,12 +428,21 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
         satirlar: list[dict] = []
         tekil: dict[str, dict] = {}
         for i in islem_listesi:
+            aciklama = i["aciklama"]
+            if kat == "Faiz / Vergi":
+                n = normalize(aciklama)
+                if "kkdf" in n:
+                    aciklama = "Faizlerin KKDF'si*"
+                elif "bsmv" in n:
+                    aciklama = "Faiz ve ücretlerin BSMV'si*"
+                elif "alisveris faizi" in n:
+                    aciklama = "Alışveriş faizi"
             if i.get("taksit"):
-                satirlar.append({"aciklama": i["aciklama"], "tutar": i["tutar"], "taksit": i["taksit"]})
+                satirlar.append({"aciklama": aciklama, "tutar": i["tutar"], "taksit": i["taksit"]})
             else:
-                if i["aciklama"] not in tekil:
-                    tekil[i["aciklama"]] = {"tutar": 0, "taksit": None}
-                tekil[i["aciklama"]]["tutar"] += i["tutar"]
+                if aciklama not in tekil:
+                    tekil[aciklama] = {"tutar": 0, "taksit": None}
+                tekil[aciklama]["tutar"] += i["tutar"]
         for aciklama, info in tekil.items():
             satirlar.append({"aciklama": aciklama, **info})
 
