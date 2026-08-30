@@ -152,9 +152,26 @@ FOREIGN_CCY_RE = re.compile(
 
 ONCELIKLI_KATEGORILER = ["Dijital / Abonelik", "Online Alışveriş"]
 
+# İşletme adında geçtiğinde diğer eşleşmelerden önce uygulanacak kurallar.
+ISIM_KATEGORI_KURALLARI = (
+    ("mng -", "Fatura / Hizmet"),
+    ("inventus", "Online Alışveriş"),
+    ("bade natural", "Online Alışveriş"),
+    ("badenatural", "Online Alışveriş"),
+    ("aymerkez", "Giyim / Alışveriş"),
+    ("yeme", "Yemek / Restoran"),
+    ("icme", "Yemek / Restoran"),
+    ("pull&bear", "Giyim / Alışveriş"),
+    ("market", "Market / Gıda"),
+    ("aytemiz", "Ulaşım"),
+)
+
 
 def kategori_bul(aciklama):
     n = normalize(aciklama)
+    for isim, kategori in ISIM_KATEGORI_KURALLARI:
+        if isim in n:
+            return kategori
     for kat in ONCELIKLI_KATEGORILER:
         for k in KATEGORILER[kat]:
             pat = k if (r"\b" in k or r"\s" in k) else re.escape(k)
