@@ -455,12 +455,14 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
     f.write(f"\nÖZET\n")
     f.write(f"{SEP}\n")
     if ozet:
+        analitik_harcama = round(ozet["harcama"] - taksit_finansman_toplam, 2)
+        analitik_faiz = round(ozet["faiz"] + taksit_finansman_toplam, 2)
         f.write(f"Önceki ekstre borcu                    {format_tl(ozet['onceki'])}\n")
         f.write(f"{odeme_etiket:<38}-{format_tl(ozet['odeme'])}\n")
-        f.write(f"Harcamalar ve geçmiş aydan taksitler   {format_tl(ozet['harcama'])}\n")
+        f.write(f"Harcamalar ve geçmiş aydan taksitler   {format_tl(analitik_harcama)}\n")
         if ozet['nakit']:
             f.write(f"Nakit avans                            {format_tl(ozet['nakit'])}\n")
-        f.write(f"Faiz, vergiler ve diğer                {format_tl(ozet['faiz'])}\n")
+        f.write(f"Faiz, vergiler ve diğer                {format_tl(analitik_faiz)}\n")
         f.write(f"{SEP}\n")
         f.write(f"Ekstre borcu                           {format_tl(ozet['ekstre'])}\n")
     else:
