@@ -421,7 +421,7 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
 
     genel_toplam = sum(i["tutar"] for i in harcamalar)
 
-    SEP = "─" * 38
+    SEP = "─" * 40
 
     for idx, (kat, islem_listesi) in enumerate(sirali):
         kat_toplam = sum(i["tutar"] for i in islem_listesi)
@@ -460,24 +460,57 @@ def yaz_rapor(f, islemler, ekstre_borcu=None, min_odeme=None, ozet=None, ekstre_
 
     f.write(f"\nÖZET\n")
     f.write(f"{SEP}\n")
+    OZET_ACIKLAMA_GENISLIGI = 38
+    OZET_DEGER_GENISLIGI = 21
+
+    def ozet_satiri(aciklama, tutar, oran=None):
+        deger = tutar
+        if oran is not None:
+            deger += f"  %{oran:.0f}"
+        satir = (
+            f"{aciklama:<{OZET_ACIKLAMA_GENISLIGI}}"
+            f"{deger:>{OZET_DEGER_GENISLIGI}}"
+        )
+        return f"{satir}\n"
+
+    ozet_kategorileri = [
+        (
+            kategori,
+            sum(i["tutar"] for i in islemler),
+        )
+        for kategori, islemler in sirali
+        if kategori not in ("Diğer", "Faiz / Vergi")
+    ]
+    ozet_kategorileri.sort(key=lambda kategori: kategori[1], reverse=True)
+    for ozet_kategori, ozet_toplam in ozet_kategorileri:
+        ozet_oran = ozet_toplam / genel_toplam * 100 if genel_toplam else 0
+        f.write(ozet_satiri(
+            ozet_kategori.upper(), format_tl(ozet_toplam), ozet_oran
+        ))
+    if ozet_kategorileri:
+        f.write("\n")
     if ozet:
         analitik_harcama = round(ozet["harcama"] - taksit_finansman_toplam, 2)
         analitik_faiz = round(ozet["faiz"] + taksit_finansman_toplam, 2)
-        f.write(f"Önceki ekstre borcu                    {format_tl(ozet['onceki'])}\n")
-        f.write(f"{odeme_etiket:<38}-{format_tl(ozet['odeme'])}\n")
-        f.write(f"Harcamalar ve geçmiş aydan taksitler   {format_tl(analitik_harcama)}\n")
+        f.write(ozet_satiri("Önceki ekstre borcu", format_tl(ozet["onceki"])))
+        f.write(ozet_satiri(odeme_etiket, f"-{format_tl(ozet['odeme'])}"))
+        f.write(ozet_satiri(
+            "Harcamalar ve geçmiş aydan taksitler", format_tl(analitik_harcama)
+        ))
         if ozet['nakit']:
-            f.write(f"Nakit avans                            {format_tl(ozet['nakit'])}\n")
-        f.write(f"Faiz, vergiler ve diğer                {format_tl(analitik_faiz)}\n")
+            f.write(ozet_satiri("Nakit avans", format_tl(ozet["nakit"])))
+        f.write(ozet_satiri(
+            "Faiz, vergiler ve diğer", format_tl(analitik_faiz)
+        ))
         f.write(f"{SEP}\n")
-        f.write(f"Ekstre borcu                           {format_tl(ozet['ekstre'])}\n")
+        f.write(ozet_satiri("Ekstre borcu", format_tl(ozet["ekstre"])))
     else:
-        f.write(f"Toplam harcama                         {format_tl(genel_toplam)}\n")
+        f.write(ozet_satiri("Toplam harcama", format_tl(genel_toplam)))
         if ekstre_borcu is not None:
-            f.write(f"Ekstre borcu                           {format_tl(ekstre_borcu)}\n")
+            f.write(ozet_satiri("Ekstre borcu", format_tl(ekstre_borcu)))
         f.write(f"{SEP}\n")
     if min_odeme is not None:
-        f.write(f"Minimum ödeme                          {format_tl(min_odeme)}\n")
+        f.write(ozet_satiri("Minimum ödeme", format_tl(min_odeme)))
 
 
 def main():
