@@ -154,6 +154,10 @@ ONCELIKLI_KATEGORILER = ["Dijital / Abonelik", "Online Alışveriş"]
 
 # İşletme adında geçtiğinde diğer eşleşmelerden önce uygulanacak kurallar.
 ISIM_KATEGORI_KURALLARI = (
+    ("pilpaketi", "Online Alışveriş"),
+    ("kanat", "Yemek / Restoran"),
+    ("beyzade", "Yemek / Restoran"),
+    ("kaspersky", "Dijital / Abonelik"),
     ("mng -", "Fatura / Hizmet"),
     ("inventus", "Online Alışveriş"),
     ("bade natural", "Online Alışveriş"),
