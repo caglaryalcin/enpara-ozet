@@ -1,0 +1,6 @@
+# PDF documents
+*.[pP][dD][fF]
+
+# Python bytecode and cache directories
+*.pyc
+__pycache__/
